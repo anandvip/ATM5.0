@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced Thought Mapper 4.0</title>
+    <title>Advanced Thought Mapper 5.0</title>
     <style>
         :root {
             --primary-color: #4CAF50;
@@ -121,10 +121,26 @@
         .history-item:hover, .suggestion:hover {
             background-color: #e0e0e0;
         }
+        .item-text {
+            display: inline-block;
+            min-width: 50px;
+            min-height: 1em;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+        .item-text:hover {
+            background-color: #f0f0f0;
+            cursor: text;
+        }
+        .item-text:focus {
+            background-color: #ffffff;
+            outline: 2px solid var(--primary-color);
+            cursor: text;
+        }
     </style>
 </head>
 <body>
-    <h1>Advanced Thought Mapper 4.0</h1>
+    <h1>Advanced Thought Mapper 5.0</h1>
     
     <div class="container">
         <div class="column">
@@ -200,6 +216,12 @@
                         this.loadFromHistory(e.target.dataset.id);
                     } else if (e.target.classList.contains('suggestion')) {
                         this.applySuggestion(e.target.dataset.id);
+                    }
+                });
+
+                document.addEventListener('focusout', (e) => {
+                    if (e.target.classList.contains('item-text')) {
+                        this.updateItemText(e.target.closest('.item').dataset.id, e.target.textContent);
                     }
                 });
             }
@@ -278,6 +300,14 @@
                 const item = this.findItem(id);
                 if (item && item.type === 'todo') {
                     item.completed = !item.completed;
+                    this.saveState();
+                }
+            }
+
+            updateItemText(id, newText) {
+                const item = this.findItem(id);
+                if (item && newText.trim() !== '') {
+                    item.text = newText.trim();
                     this.saveState();
                 }
             }
@@ -370,13 +400,13 @@
                     if (item.type === 'thought') {
                         div.innerHTML = `
                             <span class="color-indicator ${['red', 'green', 'blue'][item.colorIndex]}"></span>
-                            ${item.text}
+                            <span class="item-text" contenteditable="true">${item.text}</span>
                             <button class="change-color">Change Color</button>
                         `;
                     } else {
                         div.innerHTML = `
                             <input type="checkbox" ${item.completed ? 'checked' : ''}>
-                            <span style="text-decoration: ${item.completed ? 'line-through' : 'none'}">${item.text}</span>
+                           <span class="item-text" contenteditable="true" style="text-decoration: ${item.completed ? 'line-through' : 'none'}">${item.text}</span>
                             <span class="productivity-indicator ${item.productivityLevel}">${item.productivityLevel}</span>
                             <button class="change-productivity">Change Productivity</button>
                         `;
@@ -401,7 +431,7 @@
                 });
             }
 
-           renderHistory() {
+            renderHistory() {
                 this.historyContainer.innerHTML = '<h3>History</h3>';
                 this.history.forEach(entry => {
                     const historyItem = document.createElement('div');
