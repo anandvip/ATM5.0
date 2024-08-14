@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Thought Mapper 4.0</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --secondary-color: #f44336;
+            --background-color: #f4f4f4;
+            --item-background: #ffffff;
+            --border-color: #ddd;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .column {
+            background-color: var(--item-background);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .item {
+            background-color: var(--background-color);
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: move;
+            transition: all 0.3s ease;
+        }
+        .item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .cluster {
+            border: 1px solid var(--border-color);
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .cluster-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .color-indicator {
+            width: 20px;
+            height: 20px;
+            display: inline-block;
+            margin-right: 10px;
+            border-radius: 50%;
+        }
+        .red { background-color: #ffcccb; }
+        .green { background-color: #90EE90; }
+        .blue { background-color: #ADD8E6; }
+        .productivity-indicator {
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .productive { color: green; }
+        .neutral { color: gray; }
+        .unproductive { color: red; }
+        .dragging {
+            opacity: 0.5;
+        }
+        .drop-zone {
+            min-height: 50px;
+            border: 2px dashed var(--border-color);
+            border-radius: 5px;
+            margin-top: 10px;
+            padding: 10px;
+        }
+        .drop-zone.drag-over {
+            background-color: #e0e0e0;
+        }
+        button {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        input[type="text"] {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin: 8px 0;
+            display: inline-block;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #clear-clusters {
+            background-color: var(--secondary-color);
+        }
+        #clear-clusters:hover {
+            background-color: #d32f2f;
+        }
+        .history-item, .suggestion {
+            background-color: var(--background-color);
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .history-item:hover, .suggestion:hover {
+            background-color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Advanced Thought Mapper 4.0</h1>
+    
+    <div class="container">
+        <div class="column">
+            <h2>Thoughts and Todos</h2>
+            <div>
+                <input type="text" id="thought-input" placeholder="New thought">
+                <button id="add-thought">Add Thought</button>
+            </div>
+            <div>
+                <input type="text" id="todo-input" placeholder="New todo">
+                <button id="add-todo">Add Todo</button>
+            </div>
+            <div id="thoughts-container" class="drop-zone"></div>
+            <div id="todos-container" class="drop-zone"></div>
+        </div>
+        
+        <div class="column">
+            <h2>Clusters</h2>
+            <div>
+                <input type="text" id="cluster-input" placeholder="New cluster">
+                <button id="add-cluster">Add Cluster</button>
+            </div>
+            <button id="clear-clusters">Clear All Clusters</button>
+            <div id="clusters-container"></div>
+        </div>
+
+        <div class="column">
+            <h2>History and Suggestions</h2>
+            <div id="history-container"></div>
+            <div id="suggestions-container"></div>
+        </div>
+    </div>
+
+    <script>
+        class ThoughtMapper {
+            constructor() {
+                this.thoughts = [];
+                this.todos = [];
+                this.clusters = [];
+                this.history = [];
+                this.draggedItem = null;
+
+                this.thoughtsContainer = document.getElementById('thoughts-container');
+                this.todosContainer = document.getElementById('todos-container');
+                this.clustersContainer = document.getElementById('clusters-container');
+                this.historyContainer = document.getElementById('history-container');
+                this.suggestionsContainer = document.getElementById('suggestions-container');
+
+                this.initEventListeners();
+                this.loadFromLocalStorage();
+                this.render();
+            }
+
+            initEventListeners() {
+                document.getElementById('add-thought').addEventListener('click', () => this.addItem('thought'));
+                document.getElementById('add-todo').addEventListener('click', () => this.addItem('todo'));
+                document.getElementById('add-cluster').addEventListener('click', () => this.addCluster());
+                document.getElementById('clear-clusters').addEventListener('click', () => this.clearClusters());
+
+                document.addEventListener('dragstart', this.onDragStart.bind(this));
+                document.addEventListener('dragover', this.onDragOver.bind(this));
+                document.addEventListener('drop', this.onDrop.bind(this));
+                document.addEventListener('dragend', this.onDragEnd.bind(this));
+
+                document.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('change-color')) {
+                        this.changeItemColor(e.target.closest('.item').dataset.id);
+                    } else if (e.target.classList.contains('change-productivity')) {
+                        this.changeProductivityLevel(e.target.closest('.item').dataset.id);
+                    } else if (e.target.type === 'checkbox') {
+                        this.toggleTodo(e.target.closest('.item').dataset.id);
+                    } else if (e.target.classList.contains('history-item')) {
+                        this.loadFromHistory(e.target.dataset.id);
+                    } else if (e.target.classList.contains('suggestion')) {
+                        this.applySuggestion(e.target.dataset.id);
+                    }
+                });
+            }
+
+            addItem(type) {
+                const input = document.getElementById(`${type}-input`);
+                if (input.value.trim() !== '') {
+                    const newItem = {
+                        id: Date.now(),
+                        text: input.value.trim(),
+                        type: type,
+                        colorIndex: 0,
+                        productivityLevel: 'neutral',
+                        completed: false,
+                        timestamp: Date.now()
+                    };
+                    if (type === 'thought') {
+                        this.thoughts.push(newItem);
+                    } else {
+                        this.todos.push(newItem);
+                    }
+                    input.value = '';
+                    this.saveState();
+                }
+            }
+
+            addCluster() {
+                const input = document.getElementById('cluster-input');
+                if (input.value.trim() !== '') {
+                    this.clusters.push({
+                        id: Date.now(),
+                        title: input.value.trim(),
+                        items: [],
+                        timestamp: Date.now()
+                    });
+                    input.value = '';
+                    this.saveState();
+                }
+            }
+
+            clearClusters() {
+                if (confirm("Are you sure you want to clear all clusters? This action cannot be undone.")) {
+                    this.clusters.forEach(cluster => {
+                        cluster.items.forEach(item => {
+                            if (item.type === 'thought') {
+                                this.thoughts.push(item);
+                            } else {
+                                this.todos.push(item);
+                            }
+                        });
+                    });
+                    this.clusters = [];
+                    this.saveState();
+                }
+            }
+
+            changeItemColor(id) {
+                const item = this.findItem(id);
+                if (item && item.type === 'thought') {
+                    item.colorIndex = (item.colorIndex + 1) % 3;
+                    this.saveState();
+                }
+            }
+
+            changeProductivityLevel(id) {
+                const item = this.findItem(id);
+                if (item && item.type === 'todo') {
+                    const levels = ['productive', 'neutral', 'unproductive'];
+                    const currentIndex = levels.indexOf(item.productivityLevel);
+                    item.productivityLevel = levels[(currentIndex + 1) % levels.length];
+                    this.saveState();
+                }
+            }
+
+            toggleTodo(id) {
+                const item = this.findItem(id);
+                if (item && item.type === 'todo') {
+                    item.completed = !item.completed;
+                    this.saveState();
+                }
+            }
+
+            findItem(id) {
+                return [...this.thoughts, ...this.todos, ...this.clusters.flatMap(c => c.items)]
+                    .find(item => item.id.toString() === id);
+            }
+
+            onDragStart(e) {
+                if (e.target.classList.contains('item')) {
+                    this.draggedItem = e.target;
+                    e.dataTransfer.setData('text/plain', e.target.dataset.id);
+                    setTimeout(() => e.target.classList.add('dragging'), 0);
+                }
+            }
+
+            onDragOver(e) {
+                e.preventDefault();
+                if (e.target.classList.contains('drop-zone')) {
+                    e.target.classList.add('drag-over');
+                }
+            }
+
+            onDrop(e) {
+                e.preventDefault();
+                const dropZone = e.target.closest('.drop-zone');
+                if (dropZone) {
+                    dropZone.classList.remove('drag-over');
+                    const itemId = e.dataTransfer.getData('text');
+                    const item = this.findItem(itemId);
+                    if (item) {
+                        this.moveItem(item, dropZone);
+                    }
+                }
+            }
+
+            onDragEnd() {
+                if (this.draggedItem) {
+                    this.draggedItem.classList.remove('dragging');
+                    this.draggedItem = null;
+                }
+                document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+            }
+
+            moveItem(item, target) {
+                const removeFromArray = (array) => {
+                    const index = array.findIndex(i => i.id === item.id);
+                    if (index !== -1) {
+                        array.splice(index, 1);
+                        return true;
+                    }
+                    return false;
+                };
+
+                if (!removeFromArray(this.thoughts) && !removeFromArray(this.todos)) {
+                    this.clusters.forEach(cluster => removeFromArray(cluster.items));
+                }
+
+                if (target === this.thoughtsContainer) {
+                    this.thoughts.push(item);
+                } else if (target === this.todosContainer) {
+                    this.todos.push(item);
+                } else {
+                    const cluster = this.clusters.find(c => c.id.toString() === target.closest('.cluster').dataset.id);
+                    if (cluster) {
+                        cluster.items.push(item);
+                    }
+                }
+
+                this.saveState();
+            }
+
+            render() {
+                this.renderItems(this.thoughtsContainer, this.thoughts);
+                this.renderItems(this.todosContainer, this.todos);
+                this.renderClusters();
+                this.renderHistory();
+                this.suggestPatterns();
+            }
+
+            renderItems(container, items) {
+                container.innerHTML = '';
+                items.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = `item ${item.type}`;
+                    div.draggable = true;
+                    div.dataset.id = item.id;
+
+                    if (item.type === 'thought') {
+                        div.innerHTML = `
+                            <span class="color-indicator ${['red', 'green', 'blue'][item.colorIndex]}"></span>
+                            ${item.text}
+                            <button class="change-color">Change Color</button>
+                        `;
+                    } else {
+                        div.innerHTML = `
+                            <input type="checkbox" ${item.completed ? 'checked' : ''}>
+                            <span style="text-decoration: ${item.completed ? 'line-through' : 'none'}">${item.text}</span>
+                            <span class="productivity-indicator ${item.productivityLevel}">${item.productivityLevel}</span>
+                            <button class="change-productivity">Change Productivity</button>
+                        `;
+                    }
+
+                    container.appendChild(div);
+                });
+            }
+
+            renderClusters() {
+                this.clustersContainer.innerHTML = '';
+                this.clusters.forEach(cluster => {
+                    const clusterEl = document.createElement('div');
+                    clusterEl.className = 'cluster';
+                    clusterEl.dataset.id = cluster.id;
+                    clusterEl.innerHTML = `
+                        <div class="cluster-title">${cluster.title}</div>
+                        <div class="cluster-items drop-zone"></div>
+                    `;
+                    this.renderItems(clusterEl.querySelector('.cluster-items'), cluster.items);
+                    this.clustersContainer.appendChild(clusterEl);
+                });
+            }
+
+           renderHistory() {
+                this.historyContainer.innerHTML = '<h3>History</h3>';
+                this.history.forEach(entry => {
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'history-item';
+                    historyItem.dataset.id = entry.id;
+                    historyItem.textContent = `Snapshot from ${new Date(entry.timestamp).toLocaleString()}`;
+                    this.historyContainer.appendChild(historyItem);
+                });
+            }
+
+            suggestPatterns() {
+                const allItems = [...this.thoughts, ...this.todos, ...this.clusters.flatMap(c => c.items)];
+                const itemCounts = {};
+                allItems.forEach(item => {
+                    itemCounts[item.text] = (itemCounts[item.text] || 0) + 1;
+                });
+
+                const patterns = Object.entries(itemCounts)
+                    .filter(([text, count]) => count > 1)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5); // Top 5 patterns
+
+                this.suggestionsContainer.innerHTML = '<h3>Suggested Patterns</h3>';
+                patterns.forEach(([text, count]) => {
+                    const suggestion = document.createElement('div');
+                    suggestion.className = 'suggestion';
+                    suggestion.dataset.id = text;
+                    suggestion.textContent = `"${text}" appears ${count} times`;
+                    this.suggestionsContainer.appendChild(suggestion);
+                });
+            }
+
+            applySuggestion(suggestionText) {
+                const newCluster = {
+                    id: Date.now(),
+                    title: `Pattern: ${suggestionText}`,
+                    items: [],
+                    timestamp: Date.now()
+                };
+
+                const itemsToMove = [...this.thoughts, ...this.todos, ...this.clusters.flatMap(c => c.items)]
+                    .filter(item => item.text === suggestionText);
+
+                itemsToMove.forEach(item => {
+                    this.moveItemToCluster(item, newCluster);
+                });
+
+                this.clusters.push(newCluster);
+                this.saveState();
+            }
+
+            moveItemToCluster(item, cluster) {
+                const removeFromArray = (array) => {
+                    const index = array.findIndex(i => i.id === item.id);
+                    if (index !== -1) {
+                        array.splice(index, 1);
+                        return true;
+                    }
+                    return false;
+                };
+
+                if (!removeFromArray(this.thoughts) && !removeFromArray(this.todos)) {
+                    this.clusters.forEach(c => removeFromArray(c.items));
+                }
+
+                cluster.items.push(item);
+            }
+
+            saveState() {
+                const state = {
+                    thoughts: this.thoughts,
+                    todos: this.todos,
+                    clusters: this.clusters
+                };
+                localStorage.setItem('thoughtMapper', JSON.stringify(state));
+                this.updateHistory(state);
+                this.render();
+            }
+
+            loadFromLocalStorage() {
+                const savedState = localStorage.getItem('thoughtMapper');
+                if (savedState) {
+                    const state = JSON.parse(savedState);
+                    this.thoughts = state.thoughts;
+                    this.todos = state.todos;
+                    this.clusters = state.clusters;
+                }
+
+                const savedHistory = localStorage.getItem('thoughtMapperHistory');
+                if (savedHistory) {
+                    this.history = JSON.parse(savedHistory);
+                }
+            }
+
+            updateHistory(state) {
+                const historyEntry = {
+                    id: Date.now(),
+                    state: JSON.parse(JSON.stringify(state)), // Deep copy to ensure history integrity
+                    timestamp: Date.now()
+                };
+                this.history.unshift(historyEntry);
+                this.history = this.history.slice(0, 10); // Keep only the last 10 entries
+                localStorage.setItem('thoughtMapperHistory', JSON.stringify(this.history));
+            }
+
+            loadFromHistory(historyId) {
+                const historyEntry = this.history.find(entry => entry.id.toString() === historyId);
+                if (historyEntry) {
+                    this.thoughts = historyEntry.state.thoughts;
+                    this.todos = historyEntry.state.todos;
+                    this.clusters = historyEntry.state.clusters;
+                    this.saveState();
+                }
+            }
+        }
+
+        // Initialize the application
+        const thoughtMapper = new ThoughtMapper();
+    </script>
+</body>
+</html>
